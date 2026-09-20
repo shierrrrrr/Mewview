@@ -1,0 +1,16 @@
+bin/
+obj/
+.vs/
+*.user
+out/
+publish/
+/models/
+.workbuddy/
+
+# Internal working docs (agent-facing) — excluded from public release
+docs/SPEC.md
+docs/UI_SPEC.md
+docs/RELEASE_ARCHITECTURE.md
+docs/CURRENT_PROJECT_MAP.md
+docs/RELEASE_GAPS.md
+docs/DEPENDENCIES.md

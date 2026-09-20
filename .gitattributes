@@ -1,0 +1,24 @@
+# Normalize line endings for text files; let Git auto-detect.
+* text=auto
+
+# Source and project files
+*.cs      text eol=lf
+*.xaml    text eol=lf
+*.csproj  text eol=lf
+*.sln     text eol=lf
+
+# Documentation
+*.md      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+
+# Binary assets (never normalize)
+*.ico     binary
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.webp    binary
+*.bmp     binary
+*.onnx    binary
+*.dll     binary
+*.exe     binary

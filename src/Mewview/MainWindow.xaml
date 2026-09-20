@@ -1,0 +1,321 @@
+<Window x:Class="Mewview.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:Mewview.Controls"
+        Title="Mewview"
+        Width="1180" Height="760"
+        MinWidth="720" MinHeight="420"
+        Background="{StaticResource WindowBackgroundBrush}"
+        FontFamily="Segoe UI, Microsoft YaHei UI"
+        FontSize="13"
+        AllowDrop="True"
+        DragOver="OnDragOver"
+        Drop="OnDrop"
+        PreviewKeyDown="OnPreviewKeyDown">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="46" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="23" />
+        </Grid.RowDefinitions>
+
+        <!-- ================= Top global toolbar (Spec §6) ================= -->
+        <Border Grid.Row="0"
+                Background="{StaticResource PanelBackgroundBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,0,0,1">
+            <Grid Margin="6,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="PrevButton" Style="{StaticResource TopBarButtonStyle}"
+                            ToolTip="上一张 (←)" Click="OnPrevClick" IsEnabled="False">
+                        <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconPrev}" />
+                    </Button>
+                    <Button x:Name="NextButton" Style="{StaticResource TopBarButtonStyle}"
+                            ToolTip="下一张 (→)" Click="OnNextClick" IsEnabled="False">
+                        <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconNext}" />
+                    </Button>
+                    <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+
+                    <Button x:Name="OpenButton" Style="{StaticResource TopBarButtonStyle}"
+                            ToolTip="打开图片 (Ctrl+O)" Click="OnOpenClick">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconOpen}" />
+                            <TextBlock Text="打开" Margin="6,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="SaveButton" Style="{StaticResource TopBarButtonStyle}"
+                            ToolTip="保存 · Ctrl+S 直接覆盖 · Ctrl+Shift+S 另存为" Click="OnSaveClick" IsEnabled="False">
+                        <StackPanel Orientation="Horizontal">
+                            <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconSave}" />
+                            <TextBlock Text="保存" Margin="6,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+
+                    <Button x:Name="UndoButton" Style="{StaticResource TopBarButtonStyle}"
+                            ToolTip="撤销 (Ctrl+Z)" Click="OnUndoClick" IsEnabled="False">
+                        <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconUndo}" />
+                    </Button>
+                    <Button x:Name="RedoButton" Style="{StaticResource TopBarButtonStyle}"
+                            ToolTip="重做 (Ctrl+Y)" Click="OnRedoClick" IsEnabled="False">
+                        <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconRedo}" />
+                    </Button>
+                    <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+
+                    <Button x:Name="Zoom100Button" Style="{StaticResource TopBarButtonStyle}" Content="100%"
+                            ToolTip="实际大小 (Ctrl+1)" Click="OnZoom100Click" IsEnabled="False" />
+                    <Button x:Name="FitButton" Style="{StaticResource TopBarButtonStyle}" Content="Fit"
+                            ToolTip="适应窗口 (Ctrl+0)" Click="OnFitClick" IsEnabled="False" />
+                    <Border Style="{StaticResource ToolbarSeparatorStyle}" />
+
+                    <Button x:Name="OcrTopButton" Style="{StaticResource TopBarButtonStyle}"
+                            ToolTip="识别图中文字 (Ctrl+E)" Click="OnOcrToggleClick" IsEnabled="False">
+                        <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconOcr}" />
+                    </Button>
+                </StackPanel>
+
+                <!-- Pin: right-aligned, gray → accent blue when active (Spec §33) -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="PinButton" Style="{StaticResource TopBarButtonStyle}"
+                            Foreground="{StaticResource TextSecondaryBrush}"
+                            ToolTip="窗口置顶 (Ctrl+Shift+Space)" Click="OnPinClick">
+                        <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconPin}" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ================= Main content ================= -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="52" />
+                <ColumnDefinition Width="*" MinWidth="200" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left editor toolbar: icon only (Spec §7) -->
+            <Border Grid.Column="0"
+                    Background="{StaticResource PanelBackgroundBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,0,1,0">
+                <StackPanel x:Name="ToolPanel" Margin="0,6" IsEnabled="False">
+                    <RadioButton x:Name="ToolSelect" Style="{StaticResource ToolIconButtonStyle}"
+                                 GroupName="AnnotTool" Tag="None" IsChecked="True"
+                                 ToolTip="选择 / 平移 (Esc)" Checked="OnToolChecked">
+                        <Path Style="{StaticResource ToolIcon}" Data="{StaticResource IconSelect}"
+                              Stroke="{x:Null}"
+                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
+                    </RadioButton>
+                    <RadioButton x:Name="ToolLine" Style="{StaticResource ToolIconButtonStyle}"
+                                 GroupName="AnnotTool" Tag="Line"
+                                 ToolTip="直线" Checked="OnToolChecked">
+                        <Path Style="{StaticResource ToolIcon}" Data="{StaticResource IconLine}" />
+                    </RadioButton>
+                    <RadioButton x:Name="ToolArrow" Style="{StaticResource ToolIconButtonStyle}"
+                                 GroupName="AnnotTool" Tag="Arrow"
+                                 ToolTip="箭头" Checked="OnToolChecked">
+                        <Path Style="{StaticResource ToolIcon}" Data="{StaticResource IconArrow}" />
+                    </RadioButton>
+                    <RadioButton x:Name="ToolRect" Style="{StaticResource ToolIconButtonStyle}"
+                                 GroupName="AnnotTool" Tag="Rectangle"
+                                 ToolTip="矩形" Checked="OnToolChecked">
+                        <Path Style="{StaticResource ToolIcon}" Data="{StaticResource IconRect}" />
+                    </RadioButton>
+                    <RadioButton x:Name="ToolText" Style="{StaticResource ToolIconButtonStyle}"
+                                 GroupName="AnnotTool" Tag="Text"
+                                 ToolTip="文本（点击图面后输入，滚轮调整字号，Enter 确认）" Checked="OnToolChecked">
+                        <Path Style="{StaticResource ToolIcon}" Data="{StaticResource IconText}" />
+                    </RadioButton>
+                    <RadioButton x:Name="ToolCrop" Style="{StaticResource ToolIconButtonStyle}"
+                                 GroupName="AnnotTool" Tag="Crop"
+                                 ToolTip="裁剪" Checked="OnToolChecked">
+                        <Path Style="{StaticResource ToolIcon}" Data="{StaticResource IconCrop}" />
+                    </RadioButton>
+                </StackPanel>
+            </Border>
+
+            <!-- Center image viewport (Spec §16) -->
+            <Grid Grid.Column="1" Background="{StaticResource ViewportBackgroundBrush}">
+                <controls:ImageCanvas x:Name="Canvas" ViewChanged="OnViewChanged" />
+
+                <!-- Empty state (Spec §36) -->
+                <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock Text="Open an image"
+                               FontSize="16"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="将图片拖到此处，或按 Ctrl + O"
+                               FontSize="12"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center"
+                               Margin="0,8,0,0" Opacity="0.75" />
+                </StackPanel>
+
+                <!-- Floating tool parameters (Spec §11/§14): appears only while
+                     a parametric tool is active; overlays the viewport so the
+                     image area never gets squeezed. Sections toggle per tool (§13). -->
+                <Border x:Name="ParamPanel"
+                        HorizontalAlignment="Left" VerticalAlignment="Top"
+                        Margin="10,10,0,0"
+                        Padding="10,8"
+                        Background="{StaticResource PanelBackgroundBrush}"
+                        BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Visibility="Collapsed">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.15" />
+                    </Border.Effect>
+                    <StackPanel>
+                        <!-- Color (Line / Arrow / Rectangle / Text) -->
+                        <StackPanel x:Name="ParamColorSection" Orientation="Horizontal">
+                            <Button Style="{StaticResource SwatchButtonStyle}" Tag="Black"
+                                    Background="#111111" ToolTip="黑色" Click="OnColorClick" />
+                            <Button Style="{StaticResource SwatchButtonStyle}" Tag="White"
+                                    Background="#FFFFFF" ToolTip="白色" Click="OnColorClick" />
+                            <Button Style="{StaticResource SwatchButtonStyle}" Tag="Red"
+                                    Background="#E53935" ToolTip="红色" Click="OnColorClick"
+                                    BorderBrush="{StaticResource AccentBrush}" BorderThickness="2" />
+                            <Button Style="{StaticResource SwatchButtonStyle}" Tag="Blue"
+                                    Background="#1E88E5" ToolTip="蓝色" Click="OnColorClick" />
+                            <Button Style="{StaticResource SwatchButtonStyle}" Tag="Green"
+                                    Background="#43A047" ToolTip="绿色" Click="OnColorClick" />
+                        </StackPanel>
+
+                        <!-- Thickness (Line / Arrow / Rectangle): 细 4 / 中 8 / 粗 16 px -->
+                        <StackPanel x:Name="ParamThicknessSection" Orientation="Horizontal" Margin="0,6,0,0">
+                            <Button Style="{StaticResource SegmentedButtonStyle}" Tag="4"
+                                    ToolTip="细 (4px)" Click="OnThicknessClick">
+                                <Ellipse Width="4" Height="4" Fill="{StaticResource TextPrimaryBrush}" />
+                            </Button>
+                            <Button Style="{StaticResource SegmentedButtonStyle}" Tag="8"
+                                    ToolTip="中 (8px)" Click="OnThicknessClick"
+                                    Background="{StaticResource AccentLightBrush}">
+                                <Ellipse Width="7" Height="7" Fill="{StaticResource TextPrimaryBrush}" />
+                            </Button>
+                            <Button Style="{StaticResource SegmentedButtonStyle}" Tag="16"
+                                    ToolTip="粗 (16px)" Click="OnThicknessClick">
+                                <Ellipse Width="10" Height="10" Fill="{StaticResource TextPrimaryBrush}" />
+                            </Button>
+                        </StackPanel>
+
+                        <!-- Text tool hint: font size is wheel-adjusted while editing -->
+                        <StackPanel x:Name="ParamFontSizeSection" Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="滚动鼠标调整字号"
+                                       FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Transient toast (save/copy feedback; status bar stays info-only, Spec §24) -->
+                <Border x:Name="Toast"
+                        HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                        Margin="0,0,0,24"
+                        Padding="12,6"
+                        Background="#E52B2B2F"
+                        CornerRadius="6"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="ToastText" Foreground="White" FontSize="12" />
+                </Border>
+            </Grid>
+
+            <!-- Right OCR panel: collapsed by default, toggled by the top
+                 OCR icon; Width on the panel + Auto column so collapsing
+                 it returns the space to the image. -->
+            <Border x:Name="OcrPanel"
+                    Grid.Column="2"
+                    Width="320"
+                    Background="{StaticResource PanelBackgroundBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1,0,0,0"
+                    Visibility="Collapsed">
+                <Grid Margin="12,10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!-- Header: title + recognize -->
+                    <Grid Grid.Row="0">
+                        <TextBlock Text="OCR" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                        <Button x:Name="OcrHeaderRunButton" Style="{StaticResource TopBarButtonStyle}"
+                                HorizontalAlignment="Right"
+                                ToolTip="识别图中文字 (Ctrl+E)" Click="OnOcrRunClick">
+                            <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconOcr}" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Status line: Ready / Recognizing… / No text detected (Spec §19/§35) -->
+                    <TextBlock x:Name="OcrStatusText" Grid.Row="1"
+                               Text="Ready"
+                               FontSize="11"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,2,0,8" />
+
+                    <!-- Language (Spec §20) -->
+                    <ComboBox x:Name="OcrLanguageBox" Grid.Row="2"
+                              SelectedIndex="0" Margin="0,0,0,8">
+                        <ComboBoxItem Content="中文 + English" Tag="ChineseEnglish" />
+                        <ComboBoxItem Content="한국어" Tag="Korean" />
+                    </ComboBox>
+
+                    <!-- Result (Spec §21) -->
+                    <TextBox x:Name="OcrResultBox" Grid.Row="3"
+                             Background="{StaticResource ViewportBackgroundBrush}"
+                             Foreground="{StaticResource TextPrimaryBrush}"
+                             BorderBrush="{StaticResource BorderBrush}"
+                             FontSize="13"
+                             Padding="8"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto" />
+
+                    <!-- Bottom actions (Spec §22) -->
+                    <Grid Grid.Row="4" Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button x:Name="OcrCopyButton" Grid.Column="0"
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Content="复制全部"
+                                Margin="0,0,4,0"
+                                IsEnabled="False"
+                                Click="OnOcrCopyClick" />
+                        <Button x:Name="OcrRunButton" Grid.Column="1"
+                                Style="{StaticResource SecondaryButtonStyle}"
+                                Content="重新识别"
+                                Margin="4,0,0,0"
+                                Click="OnOcrRunClick" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- ================= Tiny status bar (Spec §24) ================= -->
+        <Border Grid.Row="2"
+                Background="{StaticResource PanelBackgroundBrush}"
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,1,0,0">
+            <Grid Margin="10,0">
+                <TextBlock x:Name="StatusLeft"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+                <TextBlock x:Name="StatusRight"
+                           HorizontalAlignment="Right"
+                           VerticalAlignment="Center"
+                           FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

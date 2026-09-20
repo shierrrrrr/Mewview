@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <!-- Current LTS (supported until 2028-11). Switch to net8.0-windows only if SDK constraints require it. -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Mewview</RootNamespace>
+    <AssemblyName>Mewview</AssemblyName>
+    <Version>0.1.0</Version>
+    <!-- WPF does NOT support PublishTrimmed / NativeAOT. Do not enable them. -->
+    <ApplicationIcon>..\..\assets\icon\icon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="4.151.2" />
+    <PackageReference Include="RapidOcrNet" Version="4.0.2" />
+  </ItemGroup>
+
+</Project>
