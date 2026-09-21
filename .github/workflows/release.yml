@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish (win-x64, self-contained)
+        shell: pwsh
+        run: dotnet publish src/Mewview/Mewview.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -o publish/win-x64
+
+      - name: Package ZIP
+        shell: pwsh
+        run: |
+          $zip = "Mewview-${{ github.ref_name }}-win-x64-portable.zip"
+          Compress-Archive -Path "publish/win-x64/*" -DestinationPath $zip -CompressionLevel Optimal
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
+          "$hash  $zip" | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+          Write-Host "Created $zip ($((Get-Item $zip).Length) bytes)"
+          Get-Content SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Mewview ${{ github.ref_name }}"
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: |
+            Mewview-*-win-x64-portable.zip
+            SHA256SUMS.txt

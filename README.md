@@ -38,9 +38,13 @@ Coming soon.
 
 ### 便携版 Portable Version
 
-> 即将提供 win-x64 便携版 ZIP（解压即用），通过 GitHub Releases 分发。
+下载最新 win-x64 便携版 ZIP（自包含，解压即用，无需安装 .NET 运行时）：
 
-Coming soon — win-x64 portable ZIP will be distributed via GitHub Releases.
+[下载最新版 (win-x64 portable)](https://github.com/shierrrrrr/Mewview/releases/latest)
+
+Download the latest win-x64 portable ZIP (self-contained, no .NET runtime required):
+
+[Download latest (win-x64 portable)](https://github.com/shierrrrrr/Mewview/releases/latest)
 
 ### 源码 Source Code
 
