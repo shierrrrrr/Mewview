@@ -22,9 +22,9 @@ A lightweight Windows image viewer with local OCR, annotation, cropping, and alw
 
 ## 截图 Screenshots
 
-> 截图待补充（发布阶段添加真实运行截图）。
+![Mewview 主界面](assets/screenshots/main-viewer.png)
 
-Screenshots coming soon.
+*Mewview 主界面 — 图片查看、左侧工具栏、顶部标注调色板*
 
 ---
 
