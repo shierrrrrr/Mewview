@@ -10,7 +10,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: Mewview version
+      label: Mewview（瞄瞄）version
       placeholder: "e.g. 0.1.0"
     validations:
       required: true

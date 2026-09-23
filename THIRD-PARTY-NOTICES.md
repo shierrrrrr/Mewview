@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Mewview 使用了以下第三方开源软件与模型。感谢各项目作者。
+Mewview（瞄瞄）使用了以下第三方开源软件与模型。感谢各项目作者。
 
 This document lists third-party software and models used by Mewview.
 

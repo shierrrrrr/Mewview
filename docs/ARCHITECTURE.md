@@ -2,7 +2,7 @@
 
 ## 概览
 
-Mewview 是一个单项目 WPF 应用（C# / .NET 10），采用 code-behind 事件驱动风格，未引入 MVVM 框架，以保持轻量。
+Mewview（瞄瞄）是一个单项目 WPF 应用（C# / .NET 10），采用 code-behind 事件驱动风格，未引入 MVVM 框架，以保持轻量。
 
 ```text
 Mewview (WPF Application)

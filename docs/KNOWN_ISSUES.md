@@ -21,7 +21,7 @@
 
 如遇到问题，请通过 GitHub Issues 报告，并尽量附上：
 
-- Mewview 版本
+- Mewview（瞄瞄）版本
 - Windows 版本
 - 复现步骤
 - 截图或错误日志（`%TEMP%\mewview_error.log`）

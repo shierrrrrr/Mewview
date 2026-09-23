@@ -1,4 +1,4 @@
-# Mewview
+# Mewview（瞄瞄）
 
 一个轻量的 Windows 图片查看器，内置本地 OCR、标注、裁剪与置顶功能。
 

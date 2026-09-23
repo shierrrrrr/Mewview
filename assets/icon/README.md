@@ -1,6 +1,6 @@
 # 应用图标 / Application Icon
 
-Mewview 品牌图标资源。
+Mewview（瞄瞄）品牌图标资源。
 
 ## 文件
 
