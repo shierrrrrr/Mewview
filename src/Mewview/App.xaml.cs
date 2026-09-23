@@ -23,7 +23,7 @@ public partial class App : Application
             catch { /* ignore logging failures */ }
 
             MessageBox.Show("An unexpected error occurred. Details were written to:\n" + ErrorLogPath,
-                "Mewview", MessageBoxButton.OK, MessageBoxImage.Error);
+                "瞄瞄", MessageBoxButton.OK, MessageBoxImage.Error);
             args.Handled = true;
         };
 

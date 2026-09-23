@@ -83,7 +83,7 @@ public partial class MainWindow : Window
 
         if (!ImageService.IsSupported(path))
         {
-            MessageBox.Show(this, "Unsupported image format.", "Mewview",
+            MessageBox.Show(this, "Unsupported image format.", "瞄瞄",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -94,7 +94,7 @@ public partial class MainWindow : Window
         }
         catch (Exception)
         {
-            MessageBox.Show(this, "Unable to open this image.", "Mewview",
+            MessageBox.Show(this, "Unable to open this image.", "瞄瞄",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -320,11 +320,11 @@ public partial class MainWindow : Window
     {
         string title;
         if (_currentPath != null)
-            title = $"{Path.GetFileName(_currentPath)} - Mewview";
+            title = $"{Path.GetFileName(_currentPath)} - 瞄瞄";
         else if (_currentImage != null)
-            title = "(剪贴板图片) - Mewview";
+            title = "(剪贴板图片) - 瞄瞄";
         else
-            title = "Mewview";
+            title = "瞄瞄";
         if (Topmost) title += "  [置顶]";
         Title = title;
     }
@@ -577,7 +577,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "保存失败：" + ex.Message, "Mewview",
+            MessageBox.Show(this, "保存失败：" + ex.Message, "瞄瞄",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -684,7 +684,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "保存失败：" + ex.Message, "Mewview",
+            MessageBox.Show(this, "保存失败：" + ex.Message, "瞄瞄",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -754,7 +754,7 @@ public partial class MainWindow : Window
             var choice = MessageBox.Show(
                 this,
                 "OCR 模型尚未安装（约 36 MB，仅首次需要联网下载）。\n是否现在下载？下载完成后将自动开始识别。",
-                "Mewview",
+                "瞄瞄",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
             if (choice != MessageBoxResult.Yes)
