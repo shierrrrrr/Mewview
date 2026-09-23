@@ -47,5 +47,6 @@ Mewview (WPF Application)
 
 - 命名空间：`Mewview` / `Mewview.Services` / `Mewview.Models` / `Mewview.Controls`
 - 程序集：`Mewview.dll` / `Mewview.exe`
+- 显示名：跟随系统 UI 语言（`zh` → `瞄瞄`，其他 → `Mewview`），统一由 `AppDisplayName.Current` 提供，仅用于窗口标题与弹窗标题。EXE 版本资源（`FileDescription` / `ProductName`）由编译器静态烧录，**无法**随语言变化。
 - 模型缓存：`%LOCALAPPDATA%\Mewview\models`
 - 错误日志：`%TEMP%\mewview_error.log`

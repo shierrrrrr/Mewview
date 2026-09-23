@@ -83,7 +83,7 @@ public partial class MainWindow : Window
 
         if (!ImageService.IsSupported(path))
         {
-            MessageBox.Show(this, "Unsupported image format.", "瞄瞄",
+            MessageBox.Show(this, "Unsupported image format.", AppDisplayName.Current,
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
@@ -94,7 +94,7 @@ public partial class MainWindow : Window
         }
         catch (Exception)
         {
-            MessageBox.Show(this, "Unable to open this image.", "瞄瞄",
+            MessageBox.Show(this, "Unable to open this image.", AppDisplayName.Current,
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -320,11 +320,11 @@ public partial class MainWindow : Window
     {
         string title;
         if (_currentPath != null)
-            title = $"{Path.GetFileName(_currentPath)} - 瞄瞄";
+            title = $"{Path.GetFileName(_currentPath)} - {AppDisplayName.Current}";
         else if (_currentImage != null)
-            title = "(剪贴板图片) - 瞄瞄";
+            title = $"(剪贴板图片) - {AppDisplayName.Current}";
         else
-            title = "瞄瞄";
+            title = AppDisplayName.Current;
         if (Topmost) title += "  [置顶]";
         Title = title;
     }
@@ -577,7 +577,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "保存失败：" + ex.Message, "瞄瞄",
+            MessageBox.Show(this, "保存失败：" + ex.Message, AppDisplayName.Current,
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -684,7 +684,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "保存失败：" + ex.Message, "瞄瞄",
+            MessageBox.Show(this, "保存失败：" + ex.Message, AppDisplayName.Current,
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
@@ -754,7 +754,7 @@ public partial class MainWindow : Window
             var choice = MessageBox.Show(
                 this,
                 "OCR 模型尚未安装（约 36 MB，仅首次需要联网下载）。\n是否现在下载？下载完成后将自动开始识别。",
-                "瞄瞄",
+                AppDisplayName.Current,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
             if (choice != MessageBoxResult.Yes)

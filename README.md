@@ -4,6 +4,9 @@
 
 A lightweight Windows image viewer with local OCR, annotation, cropping, and always-on-top support.
 
+> 窗口标题随系统语言变化：中文系统显示「瞄瞄」，其他语言显示 Mewview。
+> The window title follows your system language: 瞄瞄 on Chinese (zh) systems, Mewview otherwise.
+
 [Download](#download) · [Microsoft Store](#microsoft-store) · [GitHub Releases](#portable-version)
 
 ---
