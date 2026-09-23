@@ -11,7 +11,8 @@
     <AssemblyName>Mewview</AssemblyName>
     <Version>0.1.0</Version>
     <!-- Display name only. AssemblyName / RootNamespace / exe name stay "Mewview" (technical identity). -->
-    <AssemblyTitle>瞄瞄</AssemblyTitle>
+    <!-- Win32 version resource is static, so it cannot follow the UI language: keep it bilingual. -->
+    <AssemblyTitle>Mewview（瞄瞄）</AssemblyTitle>
     <Product>Mewview（瞄瞄）</Product>
     <!-- WPF does NOT support PublishTrimmed / NativeAOT. Do not enable them. -->
     <ApplicationIcon>..\..\assets\icon\icon.ico</ApplicationIcon>
