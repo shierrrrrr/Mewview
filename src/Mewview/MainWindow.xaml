@@ -209,6 +209,40 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Multi-page navigation: only a multi-page TIFF has pages to step
+                     through, so this stays collapsed for every other format. It floats
+                     over the viewport (rather than sitting in the toolbar) so showing
+                     and hiding it never reflows the fixed controls. -->
+                <Border x:Name="FrameNav"
+                        HorizontalAlignment="Center" VerticalAlignment="Top"
+                        Margin="0,10,0,0"
+                        Padding="4,2"
+                        Background="{StaticResource PanelBackgroundBrush}"
+                        BorderBrush="{StaticResource BorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Visibility="Collapsed">
+                    <Border.Effect>
+                        <DropShadowEffect BlurRadius="8" ShadowDepth="1" Opacity="0.15" />
+                    </Border.Effect>
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Button x:Name="PrevFrameButton" Style="{StaticResource TopBarButtonStyle}"
+                                ToolTip="上一页 (PageUp)" Click="OnPrevFrameClick">
+                            <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconPrev}" />
+                        </Button>
+                        <TextBlock x:Name="FrameNavText"
+                                   MinWidth="58"
+                                   VerticalAlignment="Center"
+                                   TextAlignment="Center"
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <Button x:Name="NextFrameButton" Style="{StaticResource TopBarButtonStyle}"
+                                ToolTip="下一页 (PageDown)" Click="OnNextFrameClick">
+                            <Path Style="{StaticResource BarIcon}" Data="{StaticResource IconNext}" />
+                        </Button>
+                    </StackPanel>
+                </Border>
+
                 <!-- Transient toast (save/copy feedback; status bar stays info-only, Spec §24) -->
                 <Border x:Name="Toast"
                         HorizontalAlignment="Center" VerticalAlignment="Bottom"

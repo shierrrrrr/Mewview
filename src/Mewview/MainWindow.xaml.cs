@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -23,8 +24,13 @@ public partial class MainWindow : Window
 
     private IReadOnlyList<string> _folderImages = Array.Empty<string>();
     private int _currentIndex = -1;
-    private BitmapSource? _currentImage;
+    private BitmapSource? _currentImage; // the frame currently on screen
     private string? _currentPath; // null when the image came from the clipboard
+
+    private ImageDocument? _document; // owns the frames; disposed when replaced
+    private int _frameIndex;
+    private bool _canAnnotate = true;
+    private readonly FrameAnimator _animator = new();
 
     private readonly IOcrService _ocrService = new OcrService();
     private CancellationTokenSource? _ocrCts;
@@ -35,6 +41,30 @@ public partial class MainWindow : Window
     private Rect? _displayedCrop;
 
     private readonly DispatcherTimer _toastTimer = new() { Interval = TimeSpan.FromSeconds(2.5) };
+
+    // Decoding runs off the UI thread, so more than one open can be in flight at
+    // once. The generation counter marks the newest request as the one whose result
+    // may be shown; the busy counter drives the wait cursor and is a count rather
+    // than a flag so that an older request finishing late cannot clear the cursor
+    // while a newer one is still working.
+    private int _openGeneration;
+    private int _busyCount;
+
+    /// <summary>How an open attempt ended, for callers that need to react to it.</summary>
+    private enum OpenOutcome
+    {
+        /// <summary>The image is now the current one.</summary>
+        Opened,
+
+        /// <summary>It could not be decoded; whatever was on screen still is.</summary>
+        Failed,
+
+        /// <summary>No decoder for this format exists on this machine.</summary>
+        MissingCodec,
+
+        /// <summary>A newer request took over before this one finished.</summary>
+        Superseded,
+    }
 
     /// <summary>Optional image path passed on the command line; loaded after the window is shown.</summary>
     public string? InitialImagePath { get; set; }
@@ -47,6 +77,7 @@ public partial class MainWindow : Window
         Canvas.DraftCommitted += OnDraftCommitted;
         Canvas.TextInputRequested += (s, e) => Canvas.BeginTextEdit(e.Position);
         Canvas.TextCommitted += OnTextCommitted;
+        _animator.FrameRequested += OnAnimationFrame;
         _toastTimer.Tick += (s, e) =>
         {
             _toastTimer.Stop();
@@ -57,7 +88,7 @@ public partial class MainWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         if (!string.IsNullOrEmpty(InitialImagePath) && File.Exists(InitialImagePath))
-            OpenImage(InitialImagePath);
+            _ = OpenImageAsync(InitialImagePath);
     }
 
     // ---------- Opening ----------
@@ -68,66 +99,270 @@ public partial class MainWindow : Window
     {
         var dlg = new OpenFileDialog
         {
-            Filter = "Images (*.jpg;*.jpeg;*.png;*.webp;*.bmp)|*.jpg;*.jpeg;*.png;*.webp;*.bmp|All files (*.*)|*.*",
+            Filter = ImageFormatRegistry.BuildOpenFilter(),
             Title = "Open Image"
         };
         if (dlg.ShowDialog(this) == true)
-            OpenImage(dlg.FileName);
+            _ = OpenImageAsync(dlg.FileName);
     }
 
-    private void OpenImage(string path)
+    /// <summary>
+    /// Opens an image, doing the decode and the folder listing on a background thread
+    /// so that a 48 MP HEIC or a multi-page TIFF cannot freeze the window. Returns why
+    /// it ended, and shows the window's wait cursor while it runs.
+    /// </summary>
+    /// <param name="reportFailure">
+    /// False when the caller is walking through a folder and will summarise the
+    /// failures itself — a modal dialog per unopenable file would make ←/→ unusable.
+    /// </param>
+    private async Task<OpenOutcome> OpenImageAsync(string path, bool reportFailure = true)
     {
-        // Normalize separators/relative segments so folder-list matching works
-        // even when the path arrives with forward slashes (e.g. from CLI args).
-        path = Path.GetFullPath(path);
+        // Last request wins: a second open started while this one is still decoding
+        // takes over, and the older one drops its result instead of showing it.
+        int generation = ++_openGeneration;
+        BeginBusy(path);
 
-        if (!ImageService.IsSupported(path))
+        try
         {
-            MessageBox.Show(this, "Unsupported image format.", AppDisplayName.Current,
+            // Normalize separators/relative segments so folder-list matching works
+            // even when the path arrives with forward slashes (e.g. from CLI args).
+            path = Path.GetFullPath(path);
+
+            if (!ImageService.IsSupported(path))
+            {
+                if (reportFailure)
+                {
+                    MessageBox.Show(this, "Unsupported image format.", AppDisplayName.Current,
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                return OpenOutcome.Failed;
+            }
+
+            ImageDocument? loaded = null;
+            try
+            {
+                loaded = await Task.Run(() => ImageService.LoadDocument(path));
+                var folder = await Task.Run(() => ImageService.GetImagesInSameFolder(path));
+
+                if (generation != _openGeneration)
+                    return OpenOutcome.Superseded;
+
+                ShowDocument(loaded, path, folder);
+                loaded = null; // the window owns it from here on
+                return OpenOutcome.Opened;
+            }
+            finally
+            {
+                // Anything decoded but not adopted has to be released here: a multi-page
+                // TIFF keeps its file stream open until it is disposed.
+                loaded?.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            if (generation != _openGeneration)
+                return OpenOutcome.Superseded; // the failure is no longer the user's problem
+
+            if (ImageService.IsMissingCodecError(path, ex))
+            {
+                if (reportFailure)
+                    ShowMissingCodecMessage(path);
+                return OpenOutcome.MissingCodec;
+            }
+
+            if (reportFailure)
+            {
+                MessageBox.Show(this, "Unable to open this image.", AppDisplayName.Current,
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            return OpenOutcome.Failed;
+        }
+        finally
+        {
+            EndBusy();
+        }
+    }
+
+    /// <summary>
+    /// A load takes a visible moment for a large file and there is no progress to
+    /// report, so the lightest possible signal goes up: the wait cursor, plus the
+    /// status bar saying which file is being opened.
+    /// </summary>
+    private void BeginBusy(string path)
+    {
+        if (++_busyCount == 1)
+            Cursor = Cursors.Wait;
+
+        StatusLeft.Text = $"正在打开 {Path.GetFileName(path)} …";
+    }
+
+    private void EndBusy()
+    {
+        if (_busyCount == 0 || --_busyCount > 0) return;
+
+        Cursor = null; // back to the window default
+
+        // The loading text is only true while a load is running. If nothing took its
+        // place there is no image to describe, so clear it.
+        if (_currentImage == null)
+            StatusLeft.Text = string.Empty;
+        else
+            UpdateStatus();
+    }
+
+    /// <summary>
+    /// HEIC/HEIF and AVIF are decoded by Windows' optional imaging extensions, which
+    /// not every machine has. The app never installs anything itself and never fetches
+    /// anything: it names what to install and, only if the user says yes, asks the shell
+    /// to open the Store search page.
+    /// </summary>
+    private void ShowMissingCodecMessage(string path)
+    {
+        var format = ImageFormatRegistry.Find(path);
+        var name = format?.DisplayName ?? "此格式";
+
+        var text =
+            $"系统缺少打开 {name} 图片所需的解码组件。\n\n" +
+            "这是 Windows 的可选功能，需要从 Microsoft Store 免费安装：\n" +
+            "· HEIC（.heic / .heif）：HEIF 图像扩展，部分系统还需 HEVC 视频扩展\n" +
+            "· AVIF（.avif）：AV1 视频扩展";
+
+        if (format?.CodecStoreSearch is not { } search)
+        {
+            MessageBox.Show(this, text, AppDisplayName.Current,
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
+        text += "\n\n是否现在打开 Microsoft Store 搜索？";
+        var answer = MessageBox.Show(this, text, AppDisplayName.Current,
+            MessageBoxButton.YesNo, MessageBoxImage.Information);
+        if (answer != MessageBoxResult.Yes) return;
+
         try
         {
-            _currentImage = ImageService.Load(path);
+            Process.Start(new ProcessStartInfo(
+                "ms-windows-store://search/?query=" + Uri.EscapeDataString(search))
+            {
+                UseShellExecute = true,
+            });
         }
         catch (Exception)
         {
-            MessageBox.Show(this, "Unable to open this image.", AppDisplayName.Current,
-                MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
+            // No Store app, or the protocol is unregistered. Nothing is lost: the
+            // message above already names what has to be installed.
         }
-
-        ShowImage(_currentImage, path);
     }
 
     /// <summary>
-    /// Makes an image current and resets all per-image state. Path is null for
-    /// images that did not come from disk (clipboard paste).
+    /// Makes a single bitmap current (clipboard paste). Path is null for images
+    /// that did not come from disk.
     /// </summary>
-    private void ShowImage(BitmapSource image, string? path)
-    {
-        _currentImage = image;
-        _currentPath = path;
+    private void ShowImage(BitmapSource image, string? path) =>
+        ShowDocument(ImageDocument.SingleFrame(image), path, Array.Empty<string>());
 
-        Canvas.SetImage(image);
-        _folderImages = path != null
-            ? ImageService.GetImagesInSameFolder(path)
-            : Array.Empty<string>();
+    /// <summary>
+    /// Makes a document current and resets all per-image state.
+    /// </summary>
+    /// <param name="folder">
+    /// The sibling images to browse through. Listed by the caller on a background
+    /// thread — enumerating a folder is I/O and does not belong on the UI thread.
+    /// </param>
+    private void ShowDocument(ImageDocument document, string? path, IReadOnlyList<string> folder)
+    {
+        // Release the previous document before adopting the new one: a paged TIFF
+        // holds its file stream open until then. Nothing on screen refers to it any
+        // more, because every page handed out is already a standalone bitmap.
+        _animator.Stop();
+        _document?.Dispose();
+
+        _document = document;
+        _currentPath = path;
+        _frameIndex = 0;
+        _currentImage = document.GetFrame(0);
+
+        Canvas.SetImage(_currentImage);
+        _folderImages = path != null ? folder : Array.Empty<string>();
         _currentIndex = path != null ? IndexOfPath(_folderImages, path) : -1;
 
         // Fresh edit state per image; the original bitmap stays untouched.
-        _session = new AnnotationSession(image);
-        _session.StateChanged += (s, e) => RefreshFromSession();
+        // A multi-frame file gets no session at all: see SetAnnotationEnabled.
+        _canAnnotate = document.SupportsAnnotation;
+        _session = _canAnnotate ? new AnnotationSession(_currentImage) : null;
+        if (_session != null)
+            _session.StateChanged += (s, e) => RefreshFromSession();
         _displayedCrop = null;
         SetTool(AnnotationTool.None);
         RefreshFromSession();
 
         EmptyState.Visibility = Visibility.Collapsed;
         SetImageUiEnabled(true);
+        // Must follow SetImageUiEnabled, which re-enables the whole tool panel.
+        SetAnnotationEnabled(_canAnnotate);
+        UpdateFrameNav();
         ResetOcrPanel();
         UpdateStatus();
+
+        if (document.IsAnimated)
+            _animator.Start(document.Frames);
+    }
+
+    /// <summary>
+    /// Annotation and crop are unavailable for multi-page TIFFs and animated GIFs:
+    /// the bitmap under the shapes changes on every page turn or animation tick, so
+    /// any annotation would immediately point at the wrong pixels. OCR is unaffected.
+    /// </summary>
+    private void SetAnnotationEnabled(bool enabled)
+    {
+        ToolPanel.IsEnabled = enabled;
+        Canvas.AnnotationsEnabled = enabled;
+        if (enabled) return;
+
+        SetTool(AnnotationTool.None);
+        UndoButton.IsEnabled = false;
+        RedoButton.IsEnabled = false;
+        SaveButton.IsEnabled = false;
+    }
+
+    /// <summary>Steps one page of a multi-page TIFF.</summary>
+    private void NavigateFrame(int delta)
+    {
+        if (_document is not { IsPaged: true } document) return;
+        int next = _frameIndex + delta;
+        if (next < 0 || next >= document.FrameCount) return;
+
+        _frameIndex = next;
+        _currentImage = document.GetFrame(next);
+
+        // Deliberately not Canvas.SetImage: that would reset zoom and pan, making
+        // two pages impossible to compare side by side.
+        Canvas.UpdateImageSource(_currentImage);
+
+        UpdateFrameNav();
+        ResetOcrPanel(); // the previous page's recognition result no longer applies
+        UpdateStatus();
+    }
+
+    private void UpdateFrameNav()
+    {
+        bool show = _document is { IsPaged: true };
+        FrameNav.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show || _document == null) return;
+
+        FrameNavText.Text = $"{_frameIndex + 1} / {_document.FrameCount}";
+        PrevFrameButton.IsEnabled = _frameIndex > 0;
+        NextFrameButton.IsEnabled = _frameIndex < _document.FrameCount - 1;
+    }
+
+    /// <summary>Animation tick: swap the bitmap only, never the view transform.</summary>
+    private void OnAnimationFrame(object? sender, int index)
+    {
+        if (_document is not { IsAnimated: true } document) return;
+        if (index < 0 || index >= document.FrameCount) return;
+
+        _frameIndex = index;
+        _currentImage = document.GetFrame(index);
+        Canvas.UpdateImageSource(_currentImage);
     }
 
     private static int IndexOfPath(IReadOnlyList<string> list, string path)
@@ -143,14 +378,21 @@ public partial class MainWindow : Window
     private void CloseCurrentImage()
     {
         CancelOcr();
+        _animator.Stop();
+        Canvas.Clear(); // drop the frame before the document that owns it goes away
+        _document?.Dispose();
+        _document = null;
         _session = null;
         _displayedCrop = null;
+        _canAnnotate = true;
         SetTool(AnnotationTool.None);
+        Canvas.AnnotationsEnabled = true;
         _currentImage = null;
         _currentPath = null;
+        _frameIndex = 0;
         _folderImages = Array.Empty<string>();
         _currentIndex = -1;
-        Canvas.Clear();
+        FrameNav.Visibility = Visibility.Collapsed;
         UpdateTitle();
         OcrPanel.Visibility = Visibility.Collapsed;
         SetImageUiEnabled(false);
@@ -183,12 +425,65 @@ public partial class MainWindow : Window
 
     private void OnNextClick(object sender, RoutedEventArgs e) => Navigate(+1);
 
-    private void Navigate(int delta)
+    private void OnPrevFrameClick(object sender, RoutedEventArgs e) => NavigateFrame(-1);
+
+    private void OnNextFrameClick(object sender, RoutedEventArgs e) => NavigateFrame(+1);
+
+    private async void Navigate(int delta)
     {
         if (_currentImage == null || _folderImages.Count == 0 || _currentIndex < 0) return;
-        int next = _currentIndex + delta;
-        if (next < 0 || next >= _folderImages.Count) return;
-        OpenImage(_folderImages[next]);
+
+        // Snapshot: a successful open re-lists the folder and replaces this array,
+        // while the loop below has to keep walking the list it started on.
+        var files = _folderImages;
+        int index = _currentIndex;
+        int skipped = 0;
+        bool missingCodec = false;
+
+        // Step past anything that will not open rather than stopping on it. A folder
+        // can hold files this machine has no decoder for (a .heic without the Store
+        // extension) or damaged ones, and a modal dialog for each would make ←/→
+        // unusable.
+        for (int attempt = 0; attempt < files.Count; attempt++)
+        {
+            index += delta;
+            if (index < 0 || index >= files.Count)
+            {
+                if (skipped > 0)
+                    ShowToast(SummariseSkipped(skipped, missingCodec, atEnd: true));
+                return;
+            }
+
+            var outcome = await OpenImageAsync(files[index], reportFailure: false);
+            if (outcome == OpenOutcome.Opened)
+            {
+                if (skipped > 0)
+                    ShowToast(SummariseSkipped(skipped, missingCodec, atEnd: false));
+                return;
+            }
+            if (outcome == OpenOutcome.Superseded)
+                return; // a newer request owns the screen now
+
+            if (outcome == OpenOutcome.MissingCodec)
+                missingCodec = true;
+            skipped++;
+        }
+
+        if (skipped > 0)
+            ShowToast(SummariseSkipped(skipped, missingCodec, atEnd: false));
+    }
+
+    /// <summary>
+    /// One line for the toast after browsing skipped some files. The missing-codec
+    /// case is named because it is actionable, and this path deliberately stays
+    /// quiet about failures while it walks the folder.
+    /// </summary>
+    private static string SummariseSkipped(int skipped, bool missingCodec, bool atEnd)
+    {
+        string where = atEnd ? "已到文件夹末尾，" : string.Empty;
+        return missingCodec
+            ? $"{where}跳过 {skipped} 个无法打开的文件（含缺少 HEIC/AVIF 解码扩展的）。"
+            : $"{where}跳过 {skipped} 个无法打开的文件。";
     }
 
     // ---------- Drag & drop ----------
@@ -203,7 +498,7 @@ public partial class MainWindow : Window
     {
         var path = GetDroppedImage(e.Data);
         if (path != null)
-            OpenImage(path);
+            _ = OpenImageAsync(path);
         e.Handled = true;
     }
 
@@ -288,6 +583,18 @@ public partial class MainWindow : Window
         else if (e.Key == Key.Right)
         {
             Navigate(+1);
+            e.Handled = true;
+        }
+        // Page up/down step through the PAGES of a multi-page file — a different
+        // axis from the ←/→ folder browsing above, so the two never fight.
+        else if (e.Key == Key.PageUp)
+        {
+            NavigateFrame(-1);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.PageDown)
+        {
+            NavigateFrame(+1);
             e.Handled = true;
         }
         else if (e.Key == Key.Escape)
@@ -519,11 +826,36 @@ public partial class MainWindow : Window
     private void OnRedoClick(object sender, RoutedEventArgs e) => _session?.Redo();
 
     /// <summary>
+    /// Saving exists to write annotations out, so it is unavailable exactly where
+    /// annotating is unavailable. The toolbar button is already disabled for such
+    /// files; this covers the Ctrl+S / Ctrl+Shift+S shortcuts.
+    /// </summary>
+    private bool RejectSaveWhenNotAnnotatable()
+    {
+        if (_currentImage == null || _canAnnotate) return false;
+        ShowToast("多帧图片（多页 TIFF / 动图）不支持标注与保存。");
+        return true;
+    }
+
+    /// <summary>
+    /// True when Ctrl+S may overwrite the original file in place: the image came
+    /// from disk and its format has an encoder (see ImageFormatRegistry).
+    /// Everything else falls back to "save as", which only writes PNG/JPEG/WebP —
+    /// so an output file never ends up with an extension its content doesn't match.
+    /// </summary>
+    private bool CanOverwriteCurrent()
+    {
+        if (_currentPath == null) return false;
+        return ImageFormatRegistry.Find(_currentPath) is { CanOverwrite: true };
+    }
+
+    /// <summary>
     /// Toolbar Save button: asks before overwriting (确定 / 另存为 / 取消).
     /// The Ctrl+S shortcut skips this confirmation on purpose.
     /// </summary>
     private void OnSaveClick(object sender, RoutedEventArgs e)
     {
+        if (RejectSaveWhenNotAnnotatable()) return;
         if (_session == null || _currentImage == null) return;
 
         bool hasEdits = _session.Annotations.Count > 0 || _session.CropRegion != null;
@@ -533,9 +865,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Clipboard images have no path; BMP has no encoder here → straight to Save As.
-        var ext = _currentPath != null ? Path.GetExtension(_currentPath).ToLowerInvariant() : null;
-        if (_currentPath == null || ext is not (".png" or ".jpg" or ".jpeg" or ".webp"))
+        // Clipboard images have no path; formats without an encoder → straight to Save As.
+        if (!CanOverwriteCurrent())
         {
             SaveAnnotated();
             return;
@@ -552,6 +883,7 @@ public partial class MainWindow : Window
     /// <summary>Ctrl+S: overwrite the original file with the rendered result.</summary>
     private void SaveOverwrite()
     {
+        if (RejectSaveWhenNotAnnotatable()) return;
         if (_session == null || _currentImage == null) return;
 
         bool hasEdits = _session.Annotations.Count > 0 || _session.CropRegion != null;
@@ -561,9 +893,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Clipboard images have no path; BMP has no encoder here → both go to Save As.
-        var ext = _currentPath != null ? Path.GetExtension(_currentPath).ToLowerInvariant() : null;
-        if (_currentPath == null || ext is not (".png" or ".jpg" or ".jpeg" or ".webp"))
+        // Clipboard images have no path; formats without an encoder both go to Save As.
+        if (_currentPath is not { } path || !CanOverwriteCurrent())
         {
             SaveAnnotated();
             return;
@@ -572,8 +903,8 @@ public partial class MainWindow : Window
         try
         {
             AnnotationRenderer.SaveToFile(
-                _session.Original, _session.Annotations, _session.CropRegion, _currentPath);
-            ShowToast($"已覆盖保存：{Path.GetFileName(_currentPath)}");
+                _session.Original, _session.Annotations, _session.CropRegion, path);
+            ShowToast($"已覆盖保存：{Path.GetFileName(path)}");
         }
         catch (Exception ex)
         {
@@ -582,21 +913,22 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>Ctrl+C: copy the current result (original + annotations + crop).</summary>
+    /// <summary>
+    /// Ctrl+C: copy what is on screen. With annotations or a crop present it copies
+    /// the rendered result; otherwise — which includes every multi-frame file, since
+    /// those cannot be annotated — it copies the current frame unchanged.
+    /// </summary>
     private void CopyImageToClipboard()
     {
-        if (_session == null || _currentImage == null) return;
+        if (_currentImage == null) return;
 
-        BitmapSource image;
-        if (_session.Annotations.Count > 0 || _session.CropRegion != null)
+        BitmapSource image = _currentImage;
+        if (_session is { } session
+            && (session.Annotations.Count > 0 || session.CropRegion != null))
         {
             var png = AnnotationRenderer.RenderToPngBytes(
-                _session.Original, _session.Annotations, _session.CropRegion);
+                session.Original, session.Annotations, session.CropRegion);
             image = PngBytesToBitmapSource(png);
-        }
-        else
-        {
-            image = _currentImage;
         }
 
         bool ok = RunWithClipboardRetry(() => Clipboard.SetImage(image));
@@ -661,6 +993,7 @@ public partial class MainWindow : Window
 
     private void SaveAnnotated()
     {
+        if (RejectSaveWhenNotAnnotatable()) return;
         if (_session == null || _currentImage == null) return;
 
         string baseName = _currentIndex >= 0
@@ -672,7 +1005,7 @@ public partial class MainWindow : Window
             FileName = baseName + "_annotated",
             DefaultExt = ".png",
             AddExtension = true,
-            Filter = "PNG image (*.png)|*.png|JPEG image (*.jpg)|*.jpg|WebP image (*.webp)|*.webp",
+            Filter = ImageFormatRegistry.BuildSaveFilter(),
         };
         if (dlg.ShowDialog(this) != true) return;
 
@@ -866,8 +1199,24 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         CancelOcr();
+        _animator.Stop();
+        _document?.Dispose();
+        _document = null;
         _ocrService.Dispose();
         base.OnClosed(e);
+    }
+
+    // An animation nobody can see should not keep ticking; resume on the way back.
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        _animator.Resume();
+    }
+
+    protected override void OnDeactivated(EventArgs e)
+    {
+        base.OnDeactivated(e);
+        _animator.Suspend();
     }
 
     // ---------- Status ----------
@@ -896,8 +1245,18 @@ public partial class MainWindow : Window
 
         string position = _currentIndex >= 0 ? $"   {_currentIndex + 1}/{_folderImages.Count}" : string.Empty;
 
+        // A multi-frame file says so here too. The floating chip is navigation, this
+        // is the image's own description — and for an animation the frame number
+        // changes ten times a second, so only the total is reported.
+        string frames = _document switch
+        {
+            { IsPaged: true } doc => $"   第 {_frameIndex + 1}/{doc.FrameCount} 页",
+            { IsAnimated: true } doc => $"   动图 · {doc.FrameCount} 帧",
+            _ => string.Empty,
+        };
+
         UpdateTitle();
-        StatusLeft.Text = $"{_currentImage.PixelWidth} × {_currentImage.PixelHeight}{fileInfo}{position}";
+        StatusLeft.Text = $"{_currentImage.PixelWidth} × {_currentImage.PixelHeight}{fileInfo}{frames}{position}";
         StatusRight.Text = Canvas.Mode == Controls.ViewMode.Fit
             ? $"{Canvas.Zoom:P0}  Fit"
             : $"{Canvas.Zoom:P0}";

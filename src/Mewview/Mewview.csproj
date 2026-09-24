@@ -9,18 +9,46 @@
     <UseWPF>true</UseWPF>
     <RootNamespace>Mewview</RootNamespace>
     <AssemblyName>Mewview</AssemblyName>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
     <!-- Display name only. AssemblyName / RootNamespace / exe name stay "Mewview" (technical identity). -->
     <!-- Win32 version resource is static, so it cannot follow the UI language: keep it bilingual. -->
     <AssemblyTitle>Mewview（瞄瞄）</AssemblyTitle>
     <Product>Mewview（瞄瞄）</Product>
     <!-- WPF does NOT support PublishTrimmed / NativeAOT. Do not enable them. -->
     <ApplicationIcon>..\..\assets\icon\icon.ico</ApplicationIcon>
+    <!-- UI text is hard-coded, so the framework's localized satellite resources are dead
+         weight (~8 MB). Keep only the two we could ever surface. -->
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="4.151.2" />
     <PackageReference Include="RapidOcrNet" Version="4.0.2" />
   </ItemGroup>
+
+  <!-- RapidOcrNet ships demo models under models/v5 and copies them into the output
+       unconditionally. OcrService never reads them: it loads every model by absolute
+       path from %LOCALAPPDATA%\Mewview\models (downloaded on first use). Drop them
+       from both the build and publish copies (~13 MB). -->
+  <Target Name="SuppressBundledOcrModels" BeforeTargets="CopyModelsBuild;CopyModelsPublish">
+    <ItemGroup>
+      <Models Remove="@(Models)" />
+    </ItemGroup>
+  </Target>
+
+  <!-- Release payload only carries what it needs. Strips debug symbols (including the
+       ~85 MB native libSkiaSharp.pdb that -p:DebugType=None cannot reach) and the
+       PDB writer that ships with the runtime pack. -->
+  <Target Name="TrimPublishPayload"
+          AfterTargets="ComputeResolvedFilesToPublishList"
+          Condition="'$(Configuration)' == 'Release'">
+    <ItemGroup>
+      <_TrimmedFromPublish Include="@(ResolvedFileToPublish)"
+                           Condition="'%(Extension)' == '.pdb'" />
+      <_TrimmedFromPublish Include="@(ResolvedFileToPublish)"
+                           Condition="'%(Filename)' == 'Microsoft.DiaSymReader.Native.amd64'" />
+      <ResolvedFileToPublish Remove="@(_TrimmedFromPublish)" />
+    </ItemGroup>
+  </Target>
 
 </Project>

@@ -10,8 +10,11 @@ public static class BitmapConversion
     /// <summary>Copies a BitmapSource into a new SKBitmap (BGRA). Caller owns the result.</summary>
     public static SKBitmap ToSKBitmap(BitmapSource source)
     {
+        // SkiaSharp wants straight (un-premultiplied) alpha. Pbgra32 therefore has to
+        // be converted too: passing premultiplied bytes to an Unpremul surface darkens
+        // every translucent pixel. JPEG-XR and clipboard images arrive as Pbgra32.
         BitmapSource bgra = source;
-        if (source.Format != PixelFormats.Bgra32 && source.Format != PixelFormats.Pbgra32)
+        if (source.Format != PixelFormats.Bgra32)
         {
             var converted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
             converted.Freeze();

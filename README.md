@@ -13,13 +13,17 @@ A lightweight Windows image viewer with local OCR, annotation, cropping, and alw
 
 ## 功能 Features
 
-- **图片查看** — 支持 JPG / PNG / WEBP / BMP，极简界面，图片占据主要空间
+- **图片查看** — 支持 JPG / PNG / WEBP / BMP / TIFF / GIF / ICO / JPEG XR / HEIC / AVIF，极简界面，图片占据主要空间
+- **多页与动图** — 多页 TIFF 可翻页，动图 GIF 自动播放；多帧图片不参与标注
 - **本地 OCR** — 中英文 + 韩文，完全本地运行，图片与文字不上传
 - **标注** — 画线、箭头、矩形、文字
 - **裁剪** — 框选裁剪
 - **置顶** — 窗口保持在最上层（Ctrl+Shift+Space）
 - **剪贴板** — 复制图片（Ctrl+C）、粘贴打开（Ctrl+V）
 - **无广告 · 无账户 · 无遥测 · 免费**
+
+> HEIC / AVIF 依赖 Windows 的可选解码扩展（Microsoft Store 免费提供）。缺少时程序会提示需要安装哪个组件，且不会自行联网安装。
+> HEIC / AVIF need Windows' optional imaging extensions (free from the Microsoft Store). The app tells you what to install; it never installs or downloads anything itself.
 
 ---
 
@@ -136,6 +140,7 @@ dotnet build Mewview.sln -c Release
 
 - 技术栈：C# / .NET 10 / WPF
 - 架构说明见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- 版本号含义与发版流程见 [docs/VERSIONING.md](docs/VERSIONING.md)
 
 ---
 

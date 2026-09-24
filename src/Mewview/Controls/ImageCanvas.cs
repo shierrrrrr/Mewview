@@ -105,6 +105,12 @@ public class ImageCanvas : Grid
         get => _activeTool;
         set
         {
+            // Defence in depth: while the host has annotation switched off, no code
+            // path may arm a tool — including this one, which the toolbar handlers
+            // call. Otherwise a stale Checked event could re-arm a disabled tool.
+            if (!_annotationsEnabled && value != AnnotationTool.None)
+                value = AnnotationTool.None;
+
             _activeTool = value;
             // Crop mode dims the whole image; the dragged selection stays bright.
             if (value == AnnotationTool.Crop) ShowCropDim();
@@ -112,6 +118,29 @@ public class ImageCanvas : Grid
         }
     }
     private AnnotationTool _activeTool = AnnotationTool.None;
+
+    /// <summary>
+    /// Gates every annotation entry point. The host disables the annotation toolbar
+    /// for files where drawing makes no sense (multi-page TIFF, animated GIF), but
+    /// the toolbar is only the first line of defence: a shortcut, a restored tool or
+    /// a code path could still reach this control, so the input handlers check here
+    /// as well.
+    /// </summary>
+    public bool AnnotationsEnabled
+    {
+        get => _annotationsEnabled;
+        set
+        {
+            if (_annotationsEnabled == value) return;
+            _annotationsEnabled = value;
+            if (!value)
+            {
+                ActiveTool = AnnotationTool.None; // also drops the crop dim
+                CancelDraft();
+            }
+        }
+    }
+    private bool _annotationsEnabled = true;
 
     /// <summary>Style used for the rubber band preview (committed shapes are set by the host).</summary>
     public Color DraftColor { get; set; } = Color.FromRgb(0xE5, 0x39, 0x35);
@@ -242,6 +271,32 @@ public class ImageCanvas : Grid
         UpdatePixelMapping();
         _pendingInitialView = true;
         ApplyInitialView();
+    }
+
+    /// <summary>
+    /// Swaps the displayed bitmap WITHOUT touching zoom or pan.
+    /// Stepping through the pages of a multi-page file must use this rather than
+    /// <see cref="SetImage"/>: that one re-runs the open-time zoom rule, which would
+    /// snap the view back to "fit" on every single page turn and make comparing two
+    /// pages impossible. When the new bitmap has different pixel dimensions the view
+    /// is re-centered at the current scale, so a smaller page cannot drift off-screen.
+    /// </summary>
+    public void UpdateImageSource(BitmapSource source)
+    {
+        var previous = (BitmapSource?)_image.Source;
+        _image.Source = source;
+        UpdatePixelMapping();
+
+        bool sizeChanged = previous == null
+            || previous.PixelWidth != source.PixelWidth
+            || previous.PixelHeight != source.PixelHeight;
+        if (!sizeChanged || ActualWidth < 1 || ActualHeight < 1) return;
+
+        var size = ImageSize();
+        if (Mode == ViewMode.Fit)
+            _scale = ClampScale(Math.Min(ActualWidth / size.Width, ActualHeight / size.Height));
+        Center(size);
+        Apply();
     }
 
     public void Clear()
@@ -430,6 +485,12 @@ public class ImageCanvas : Grid
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (!HasImage) return;
+
+        // Annotation input is off for this image; fall through to pan / zoom instead.
+        if (!_annotationsEnabled && ActiveTool != AnnotationTool.None)
+        {
+            ActiveTool = AnnotationTool.None;
+        }
 
         // Text tool: a click places an inline editor instead of starting a drag.
         if (ActiveTool == AnnotationTool.Text)

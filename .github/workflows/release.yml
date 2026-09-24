@@ -15,6 +15,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Verify tag matches the version in the project file
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}' -replace '^v', ''
+          [xml]$project = Get-Content src/Mewview/Mewview.csproj
+          $version = $project.Project.PropertyGroup |
+            ForEach-Object { $_.Version } |
+            Where-Object { $_ } |
+            Select-Object -First 1
+          if (-not $version) {
+            Write-Error 'No <Version> element found in src/Mewview/Mewview.csproj.'
+            exit 1
+          }
+          if ($tag -ne $version) {
+            Write-Error "Tag '${{ github.ref_name }}' does not match <Version>$version</Version>. Bump the version, or re-tag."
+            exit 1
+          }
+          Write-Host "Version check OK: tag ${{ github.ref_name }} matches <Version>$version</Version>."
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
