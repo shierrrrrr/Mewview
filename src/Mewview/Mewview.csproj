@@ -23,7 +23,7 @@
 
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="4.151.2" />
-    <PackageReference Include="RapidOcrNet" Version="4.0.2" />
+    <PackageReference Include="RapidOcrNet" Version="4.2.0" />
   </ItemGroup>
 
   <!-- RapidOcrNet ships demo models under models/v5 and copies them into the output
