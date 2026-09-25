@@ -114,24 +114,26 @@ public static class ImageService
     {
         if (format.FrameKind == FrameKind.Gif)
         {
-            // Pass one, header only: frame count and per-frame dimensions, no pixels.
+            // Pass one, header only: frame count, no pixels.
             int frameCount;
-            long estimatedBytes = 0;
             using (var header = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
                 var probe = BitmapDecoder.Create(
                     header, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
                 frameCount = probe.Frames.Count;
                 if (frameCount <= 1) return null;
-
-                foreach (var frame in probe.Frames)
-                {
-                    estimatedBytes += (long)frame.PixelWidth * frame.PixelHeight * 4;
-                }
             }
 
-            if (estimatedBytes > MaxAnimationBytes)
+            // Playback keeps every frame resident, and after compositing each one is
+            // a full logical screen rather than just the rectangle that changed — so
+            // the budget has to be measured against the screen size, not the sum of
+            // the (much smaller) frame patches.
+            var screen = GifFrameCompositor.TryReadScreen(path);
+            if (screen is { } size
+                && (long)size.Width * size.Height * 4 * frameCount > MaxAnimationBytes)
+            {
                 return null; // too big to animate — show the first frame as a still
+            }
 
             return ImageDocument.MultiFrame(LoadAnimatedGif(path, frameCount));
         }
@@ -146,39 +148,47 @@ public static class ImageService
     }
 
     /// <summary>
-    /// Decodes every GIF frame and its delay up-front. OnLoad is used rather than
-    /// the lazy mode because playback revisits each frame on every loop.
+    /// Decodes every GIF frame and its delay up-front, then composites them onto
+    /// the logical screen. OnLoad is used rather than the lazy mode because
+    /// playback revisits each frame on every loop.
+    ///
+    /// The compositing step is not optional: the decoder returns each frame as the
+    /// raw changed rectangle, so without it the viewer would show a jumping,
+    /// mostly-transparent patch instead of the animation. See
+    /// <see cref="GifFrameCompositor"/>.
     /// </summary>
     private static AnimatedFrameSource LoadAnimatedGif(string path, int frameCount)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        // Not IDisposable: a WPF decoder is a DispatcherObject, and the stream below
+        // is what actually holds the file.
         var decoder = new GifBitmapDecoder(
             stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);
 
         // The header pass already counted the frames; trust it only as an upper
         // bound in case the file is malformed.
         int count = Math.Min(frameCount, decoder.Frames.Count);
-        var frames = new BitmapSource[count];
+        var raw = new BitmapSource[count];
         var delays = new TimeSpan[count];
         for (int i = 0; i < count; i++)
         {
             var decoded = decoder.Frames[i];
 
-            // Read the timing off the decoded frame: the metadata does not survive
-            // the copy below.
+            // Read the timing off the decoded frame: neither the metadata nor the
+            // frame rectangle survives the compositing below.
             delays[i] = ReadGifDelay(decoded);
-
-            // Every frame has to be frozen before it leaves this method. The load may
-            // well have run on a background thread, and an unfrozen frame cannot be
-            // touched by the UI thread at all. Materializing is the fallback for a
-            // frame that refuses to freeze.
-            BitmapSource frame = decoded;
-            if (decoded.CanFreeze)
-                decoded.Freeze();
-            else
-                frame = FrameMaterializer.Materialize(decoded, MaxDecodePixels);
-            frames[i] = frame;
+            raw[i] = decoded;
         }
+
+        // The header knows the true canvas; without it, fall back to the largest
+        // rectangle any frame covers. The background colour only matters when the
+        // animation does not use transparency at all — see GifFrameCompositor.
+        var screen = GifFrameCompositor.TryReadScreen(path);
+        var (width, height) = screen is { } info
+            ? (info.Width, info.Height)
+            : GifFrameCompositor.BoundsOf(raw);
+        var frames = GifFrameCompositor.Composite(raw, width, height, screen?.Background);
         return new AnimatedFrameSource(frames, delays);
     }
 

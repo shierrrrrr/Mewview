@@ -78,6 +78,7 @@ public partial class MainWindow : Window
         Canvas.TextInputRequested += (s, e) => Canvas.BeginTextEdit(e.Position);
         Canvas.TextCommitted += OnTextCommitted;
         _animator.FrameRequested += OnAnimationFrame;
+        _animator.Finished += (s, e) => UpdateStatus();
         _toastTimer.Tick += (s, e) =>
         {
             _toastTimer.Stop();
@@ -363,6 +364,19 @@ public partial class MainWindow : Window
         _frameIndex = index;
         _currentImage = document.GetFrame(index);
         Canvas.UpdateImageSource(_currentImage);
+    }
+
+    /// <summary>
+    /// A click on an animated image plays it again. The animation runs once and
+    /// then parks on its last frame, so this is how the user asks for another
+    /// round — nothing else claims a plain click while annotations are off.
+    /// </summary>
+    private void OnViewportClicked(object? sender, EventArgs e)
+    {
+        if (_document is not { IsAnimated: true }) return;
+        if (_animator.IsRunning) return; // already playing: let it finish
+        _animator.Replay();
+        UpdateStatus();
     }
 
     private static int IndexOfPath(IReadOnlyList<string> list, string path)
@@ -1247,11 +1261,14 @@ public partial class MainWindow : Window
 
         // A multi-frame file says so here too. The floating chip is navigation, this
         // is the image's own description — and for an animation the frame number
-        // changes ten times a second, so only the total is reported.
+        // changes ten times a second, so only the total is reported. The animation
+        // plays once, hence the hint about replaying it.
         string frames = _document switch
         {
             { IsPaged: true } doc => $"   第 {_frameIndex + 1}/{doc.FrameCount} 页",
-            { IsAnimated: true } doc => $"   动图 · {doc.FrameCount} 帧",
+            { IsAnimated: true } doc => _animator.IsFinished
+                ? $"   动图 · {doc.FrameCount} 帧 · 已播放完，点击重播"
+                : $"   动图 · {doc.FrameCount} 帧",
             _ => string.Empty,
         };
 

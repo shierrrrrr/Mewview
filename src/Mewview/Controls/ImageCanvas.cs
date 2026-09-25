@@ -65,6 +65,10 @@ public class ImageCanvas : Grid
     private const double MaxScale = 64.0;
     private const double WheelFactor = 1.25;
     private const double MinDragPixels = 3.0;
+
+    /// <summary>Pointer travel still counted as a click rather than a pan, in DIPs.</summary>
+    private const double ClickSlop = 4.0;
+
     private const double MinFontSize = 6.0;
     private const double MaxFontSize = 500.0;
     private const double FontSizeWheelFactor = 1.1;
@@ -161,6 +165,13 @@ public class ImageCanvas : Grid
 
     /// <summary>Raised whenever zoom/pan changes so the host can update its status display.</summary>
     public event EventHandler? ViewChanged;
+
+    /// <summary>
+    /// A plain click on the image: no drag, no annotation tool, annotations off.
+    /// Animated images use it as "play that again"; nothing else consumes it,
+    /// because panning needs movement and picking a tool needs a tool.
+    /// </summary>
+    public event EventHandler? ViewportClicked;
 
     /// <summary>Raised when an annotation drag finishes (coords in displayed-image pixels).</summary>
     public event EventHandler<AnnotationDraftEventArgs>? DraftCommitted;
@@ -559,9 +570,19 @@ public class ImageCanvas : Grid
             ReleaseMouseCapture();
             return;
         }
+
+        // A click is a press and a release in the same spot; anything further is a
+        // pan. The slop keeps a shaky hand from turning one into the other.
+        bool dragged = _panning
+            && (Math.Abs(e.GetPosition(this).X - _panStart.X) > ClickSlop
+                || Math.Abs(e.GetPosition(this).Y - _panStart.Y) > ClickSlop);
+
         if (_panning)
             ReleaseMouseCapture();
         EndPan();
+
+        if (!_annotationsEnabled && !dragged && e.ClickCount == 1)
+            ViewportClicked?.Invoke(this, EventArgs.Empty);
     }
 
     private void EndPan()

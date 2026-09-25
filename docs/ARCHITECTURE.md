@@ -16,7 +16,8 @@ Mewview (WPF Application)
 │   ├── ImageFormatRegistry 格式登记表：扩展名 / 显示名 / 解码引擎 / 帧形态 / 保存能力（单一来源）
 │   ├── ImageService        图片加载与浏览（WPF/WIC 解码 + SkiaSharp WebP + 帧源装配）
 │   ├── FrameSources        多帧实现：逐帧物化为独立位图（多页 TIFF 懒解码 / 动图常驻）
-│   ├── FrameAnimator       动图播放定时器，窗口失焦时暂停
+│   ├── GifFrameCompositor  GIF 补丁帧 → 完整逻辑屏：按 disposal 合成、处理背景色
+│   ├── FrameAnimator       动图播放定时器：播放一遍后停在末帧可重播，窗口失焦时暂停
 │   ├── OcrService          RapidOcrNet + PP-OCRv5 推理、模型下载
 │   ├── AnnotationRenderer  标注光栅化导出
 │   └── BitmapConversion    BitmapSource ↔ SKBitmap 转换
@@ -32,6 +33,7 @@ Mewview (WPF Application)
 - **格式单一来源**：`ImageFormatRegistry` 是扩展名、对话框过滤器、解码分派与"能否覆盖保存"的唯一出处。新增格式只需在表里加一行，其他文件不得硬编码扩展名。
 - **解码分两条路**：能自解码的走 WPF/WIC（含多页与动图），WebP 走 SkiaSharp（自带编解码，不依赖系统扩展）；HEIC/AVIF 交给 Windows 的可选解码扩展，因此在这台机器上能否打开取决于系统装了哪些组件。
 - **换帧不改视图**：多帧翻页/播放必须走 `ImageCanvas.UpdateImageSource`（只换位图），不能用 `SetImage`——后者会重跑开场缩放规则，每翻一页都把视图弹回适应窗口。
+- **GIF 必须先合成再显示**：`GifBitmapDecoder`（其下是 WIC）交回的是每帧**变化矩形**（补丁），不是完整画面；矩形外透明、`disposal` 未处理。直接把补丁当整帧画，画面会缩到补丁大小、四周露出视口背景（闪白），补丁内的透明洞也会露出白底（白点）。`GifFrameCompositor` 按逻辑屏尺寸把每帧画成完整画面后再交给画布：先按上一帧的 disposal 处理（2 = 清空／填背景色，3 = 恢复绘制前的内容），再叠加当前帧（跳过透明像素）。
 - **跨线程只传冻结位图**：解码与文件夹枚举在后台线程完成，但 `BitmapDecoder` / `BitmapFrame` 是 `DispatcherObject`，只能被创建它的线程碰。因此加载过程只允许交出已 `Freeze()` 的位图；多页 TIFF 的首页在后台物化，其余页的 decoder 等真正要翻到那一页时才创建（届时必然在 UI 线程上）。
 - **标注非破坏性**：标注保存在独立的矢量层（`AnnotationSession`），仅在保存/导出时栅格化到图片；撤销/重做用命令模式双栈。
 - **OCR 懒加载**：按语言懒创建 `RapidOcr` 引擎并复用；模型缺失时由 `EnsureModelsAsync` 一次性下载。

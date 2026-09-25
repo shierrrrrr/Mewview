@@ -137,7 +137,7 @@
 
             <!-- Center image viewport (Spec §16) -->
             <Grid Grid.Column="1" Background="{StaticResource ViewportBackgroundBrush}">
-                <controls:ImageCanvas x:Name="Canvas" ViewChanged="OnViewChanged" />
+                <controls:ImageCanvas x:Name="Canvas" ViewChanged="OnViewChanged" ViewportClicked="OnViewportClicked" />
 
                 <!-- Empty state (Spec §36) -->
                 <StackPanel x:Name="EmptyState" HorizontalAlignment="Center" VerticalAlignment="Center">

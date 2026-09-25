@@ -9,7 +9,7 @@
 
 支持的格式：JPG / JPEG / PNG / WEBP / BMP / TIFF（含多页）/ GIF（含动图）/ ICO / JPEG XR（.jxr、.wdp）/ HEIC（.heic、.heif）/ AVIF。
 
-多页 TIFF 用 `PageUp` / `PageDown` 翻页，动图 GIF 会自动播放；这类多帧图片只能查看，不参与标注与裁剪。
+多页 TIFF 用 `PageUp` / `PageDown` 翻页；动图 GIF 打开后自动播放**一遍**，播完停在最后一帧，**点击图片可再次播放**。这类多帧图片只能查看，不参与标注与裁剪。
 
 HEIC / AVIF 由 Windows 的**可选解码扩展**提供解码能力（Microsoft Store 免费）。未安装时打开会提示需要安装哪个组件，程序自身既不联网下载也不安装任何东西。
 
